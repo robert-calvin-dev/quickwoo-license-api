@@ -1,0 +1,13 @@
+# Secrets + env
+.env
+*.db
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code/system junk
+.vscode/
+.DS_Store
+
