@@ -9,6 +9,8 @@ import hmac
 import hashlib
 import json
 import stripe
+import smtplib
+from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
 from database import get_db
@@ -30,6 +32,10 @@ app.add_middleware(
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
@@ -43,6 +49,36 @@ PRICE_MAP = {
     "price_1RMtQSRsUBtHLZvdErOh33fh": {"plugin": "quickwoo-bundle", "plan": "year"},
     "price_1RMtR9RsUBtHLZvdJCE0UquK": {"plugin": "quickwoo-bundle", "plan": "life"}
 }
+
+def send_license_email(to_email, plugin, license_key):
+    subject = f"Your QuickWoo License for {plugin}"
+    body = f"""
+Thank you for your purchase of {plugin}!
+
+Your license key:
+{license_key}
+
+You can now activate your plugin by entering this key in your WordPress dashboard.
+
+Download your plugin here:
+https://www.quickwoo.pro/downloads/{plugin}.zip
+
+Enjoy,
+The QuickWoo Team
+    """
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = EMAIL_HOST_USER
+    msg['To'] = to_email
+
+    try:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_HOST_USER, EMAIL_HOST_PASSWORD)
+            server.sendmail(EMAIL_HOST_USER, to_email, msg.as_string())
+            print(f"Sent license to {to_email}")
+    except Exception as e:
+        print("Failed to send email:", e)
 
 class LicenseVerifyRequest(BaseModel):
     license_key: str
@@ -119,6 +155,8 @@ async def generate_license(data: LicenseGenerateRequest, x_api_key: str = Header
     db.commit()
     db.refresh(new_license)
 
+    send_license_email(data.email, data.plugin, license_key)
+
     return {
         "license_key": new_license.license_key,
         "email": new_license.email,
@@ -151,7 +189,7 @@ async def revoke_license(data: LicenseRevokeRequest, x_api_key: str = Header(...
 @app.post("/stripe-webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
-    print("Received raw payload:", payload.decode())  # TEMPORARY DEBUG LOG
+    print("Received raw payload:", payload.decode())
     sig_header = request.headers.get("stripe-signature")
 
     try:
@@ -189,6 +227,8 @@ async def stripe_webhook(request: Request):
             )
             db.add(new_license)
             db.commit()
+
+            send_license_email(email, info['plugin'], license_key)
 
     return {"status": "success"}
 
