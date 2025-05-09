@@ -33,14 +33,14 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 stripe.api_key = STRIPE_SECRET_KEY
 
 PRICE_MAP = {
-    "price_1RMtLxRsUBtHLZvd9xEhquGH": {"plugin": "quick-add", "plan": "year"},
-    "price_1RMtMURsUBtHLZvdHZxqBaVX": {"plugin": "quick-add", "plan": "life"},
-    "price_1RMtN7RsUBtHLZvdINpQTk9o": {"plugin": "quick-edit", "plan": "year"},
-    "price_1RMtO8RsUBtHLZvdoiAxc3sk": {"plugin": "quick-edit", "plan": "life"},
-    "price_1RMtOgRsUBtHLZvd3PcrTf80": {"plugin": "quick-seo", "plan": "year"},
-    "price_1RMtPHRsUBtHLZvdwZ6BhH3g": {"plugin": "quick-seo", "plan": "life"},
-    "price_1RMtQSRsUBtHLZvdErOh33fh": {"plugin": "quickwoo-bundle", "plan": "year"},
-    "price_1RMtR9RsUBtHLZvdJCE0UquK": {"plugin": "quickwoo-bundle", "plan": "life"}
+    "price_1RMxHlRoUkoV66d2CePA4APz": {"plugin": "quick-add", "plan": "year"},
+    "price_1RMxIyRoUkoV66d2IoVgVKKN": {"plugin": "quick-add", "plan": "life"},
+    "price_1RMxJdRoUkoV66d2Gdid1PeH": {"plugin": "quick-edit", "plan": "year"},
+    "price_1RMxK6RoUkoV66d2d6yN3dmW": {"plugin": "quick-edit", "plan": "life"},
+    "price_1RMxKhRoUkoV66d20o1WH0RB": {"plugin": "quick-seo", "plan": "year"},
+    "price_1RMxLCRoUkoV66d2ClvZ0akg": {"plugin": "quick-seo", "plan": "life"},
+    "price_1RMxLsRoUkoV66d2YJEvgwoF": {"plugin": "quickwoo-bundle", "plan": "year"},
+    "price_1RMxMORoUkoV66d2YSeyssqq": {"plugin": "quickwoo-bundle", "plan": "life"}
 }
 
 class LicenseVerifyRequest(BaseModel):
