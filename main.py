@@ -5,6 +5,9 @@ from starlette.middleware.cors import CORSMiddleware
 from datetime import datetime, date, timedelta
 import os
 import uuid
+import hmac
+import hashlib
+import json
 from dotenv import load_dotenv
 
 from database import get_db
@@ -24,10 +27,19 @@ app.add_middleware(
 )
 
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-# ----------------------
-# SCHEMAS
-# ----------------------
+PRICE_MAP = {
+    "price_1RMtLxRsUBtHLZvd9xEhquGH": {"plugin": "quick-add", "plan": "year"},
+    "price_1RMtMURsUBtHLZvdHZxqBaVX": {"plugin": "quick-add", "plan": "life"},
+    "price_1RMtN7RsUBtHLZvdINpQTk9o": {"plugin": "quick-edit", "plan": "year"},
+    "price_1RMtO8RsUBtHLZvdoiAxc3sk": {"plugin": "quick-edit", "plan": "life"},
+    "price_1RMtOgRsUBtHLZvd3PcrTf80": {"plugin": "quick-seo", "plan": "year"},
+    "price_1RMtPHRsUBtHLZvdwZ6BhH3g": {"plugin": "quick-seo", "plan": "life"},
+    "price_1RMtQSRsUBtHLZvdErOh33fh": {"plugin": "quickwoo-bundle", "plan": "year"},
+    "price_1RMtR9RsUBtHLZvdJCE0UquK": {"plugin": "quickwoo-bundle", "plan": "life"}
+}
+
 class LicenseVerifyRequest(BaseModel):
     license_key: str
     email: EmailStr
@@ -36,16 +48,13 @@ class LicenseVerifyRequest(BaseModel):
 class LicenseGenerateRequest(BaseModel):
     email: EmailStr
     plugin: str
-    plan: str  # "year" or "life"
+    plan: str
 
 class LicenseRevokeRequest(BaseModel):
     license_key: str
     email: EmailStr
     reason: str
 
-# ----------------------
-# ROUTES
-# ----------------------
 @app.post("/verify-license")
 async def verify_license(data: LicenseVerifyRequest):
     db = next(get_db())
@@ -134,6 +143,60 @@ async def revoke_license(data: LicenseRevokeRequest, x_api_key: str = Header(...
     db.commit()
 
     return {"status": "revoked", "license_key": data.license_key, "reason": data.reason}
+
+@app.post("/stripe-webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    if STRIPE_WEBHOOK_SECRET is None:
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+
+    try:
+        import stripe
+        stripe.api_key = "sk_test_placeholder"
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Webhook signature verification failed: {str(e)}")
+
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        customer_email = session.get("customer_details", {}).get("email")
+        line_items = session.get("display_items") or []
+        price_id = None
+
+        # For new checkout API
+        if "line_items" not in session:
+            try:
+                checkout_session_id = session["id"]
+                line_items = stripe.checkout.Session.list_line_items(checkout_session_id)["data"]
+                if line_items and 'price' in line_items[0]:
+                    price_id = line_items[0]['price']['id']
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to retrieve line items: {str(e)}")
+
+        if customer_email and price_id and price_id in PRICE_MAP:
+            info = PRICE_MAP[price_id]
+            db = next(get_db())
+            issued_at = date.today()
+            expires_at = issued_at + timedelta(days=365) if info['plan'] == "year" else None
+            license_key = generate_license_key(info['plugin'], info['plan'], issued_at)
+
+            new_license = License(
+                license_key=license_key,
+                email=customer_email,
+                plugin=info['plugin'],
+                plan=info['plan'],
+                issued_at=issued_at,
+                expires_at=expires_at
+            )
+
+            db.add(new_license)
+            db.commit()
+
+    return {"status": "received"}
 
 @app.get("/")
 def root():
