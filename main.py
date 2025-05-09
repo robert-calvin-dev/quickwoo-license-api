@@ -151,11 +151,13 @@ async def revoke_license(data: LicenseRevokeRequest, x_api_key: str = Header(...
 @app.post("/stripe-webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
+    print("Received raw payload:", payload.decode())  # TEMPORARY DEBUG LOG
     sig_header = request.headers.get("stripe-signature")
 
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except Exception as e:
+        print("Webhook signature error:", str(e))
         raise HTTPException(status_code=400, detail=f"Invalid webhook signature: {str(e)}")
 
     if event['type'] == 'checkout.session.completed':
@@ -167,6 +169,7 @@ async def stripe_webhook(request: Request):
             line_items = stripe.checkout.Session.list_line_items(session_id, limit=1)
             price_id = line_items['data'][0]['price']['id'] if line_items['data'] else None
         except Exception as e:
+            print("Failed to fetch line items:", str(e))
             raise HTTPException(status_code=500, detail=f"Failed to fetch line items: {str(e)}")
 
         if email and price_id and price_id in PRICE_MAP:
