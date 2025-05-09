@@ -8,6 +8,7 @@ import uuid
 import hmac
 import hashlib
 import json
+import stripe
 from dotenv import load_dotenv
 
 from database import get_db
@@ -28,6 +29,9 @@ app.add_middleware(
 
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+
+stripe.api_key = STRIPE_SECRET_KEY
 
 PRICE_MAP = {
     "price_1RMtLxRsUBtHLZvd9xEhquGH": {"plugin": "quick-add", "plan": "year"},
@@ -149,54 +153,41 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
 
-    if STRIPE_WEBHOOK_SECRET is None:
-        raise HTTPException(status_code=500, detail="Webhook secret not configured")
-
     try:
-        import stripe
-        stripe.api_key = "sk_test_placeholder"
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Webhook signature verification failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Invalid webhook signature: {str(e)}")
 
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
-        customer_email = session.get("customer_details", {}).get("email")
-        line_items = session.get("display_items") or []
-        price_id = None
+        email = session.get('customer_details', {}).get('email')
+        session_id = session['id']
 
-        # For new checkout API
-        if "line_items" not in session:
-            try:
-                checkout_session_id = session["id"]
-                line_items = stripe.checkout.Session.list_line_items(checkout_session_id)["data"]
-                if line_items and 'price' in line_items[0]:
-                    price_id = line_items[0]['price']['id']
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to retrieve line items: {str(e)}")
+        try:
+            line_items = stripe.checkout.Session.list_line_items(session_id, limit=1)
+            price_id = line_items['data'][0]['price']['id'] if line_items['data'] else None
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch line items: {str(e)}")
 
-        if customer_email and price_id and price_id in PRICE_MAP:
+        if email and price_id and price_id in PRICE_MAP:
             info = PRICE_MAP[price_id]
-            db = next(get_db())
             issued_at = date.today()
             expires_at = issued_at + timedelta(days=365) if info['plan'] == "year" else None
             license_key = generate_license_key(info['plugin'], info['plan'], issued_at)
 
+            db = next(get_db())
             new_license = License(
                 license_key=license_key,
-                email=customer_email,
+                email=email,
                 plugin=info['plugin'],
                 plan=info['plan'],
                 issued_at=issued_at,
                 expires_at=expires_at
             )
-
             db.add(new_license)
             db.commit()
 
-    return {"status": "received"}
+    return {"status": "success"}
 
 @app.get("/")
 def root():
