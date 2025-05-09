@@ -1,0 +1,144 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Your QuickWoo License</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #6139F5;
+      --accent: #0f0c48;
+      --bg: #f5f4fa;
+      --white: #fff;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Poppins', sans-serif;
+      background-color: var(--bg);
+      color: var(--accent);
+    }
+
+    .container {
+      max-width: 780px;
+      margin: 40px auto;
+      padding: 20px;
+      background: var(--white);
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+
+    h1 {
+      color: var(--primary);
+      font-size: 2em;
+      text-align: center;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    input[type=email] {
+      width: 300px;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+    }
+
+    button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .license-block {
+      background: #f0edff;
+      border-left: 4px solid var(--primary);
+      padding: 16px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+
+    .license-block strong {
+      color: var(--accent);
+    }
+
+    .download-btn {
+      display: inline-block;
+      background: var(--primary);
+      color: #fff;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      margin-top: 10px;
+    }
+
+    .error {
+      background: #ffe0e0;
+      padding: 16px;
+      border-left: 4px solid red;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Access Your License</h1>
+    <form id="lookup-form">
+      <input type="email" id="email" placeholder="Enter your email" required />
+      <button type="submit">Look Up License</button>
+    </form>
+    <div id="content"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('lookup-form');
+    const content = document.getElementById('content');
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const apiKey = 'REPLACE_WITH_YOUR_ADMIN_API_KEY';
+
+      content.innerHTML = 'Loading...';
+
+      fetch(`https://quickwoo-license-api.onrender.com/license-lookup?email=${encodeURIComponent(email)}`, {
+        headers: {
+          'x-api-key': apiKey
+        }
+      })
+      .then(res => res.ok ? res.json() : res.json().then(err => { throw err }))
+      .then(data => {
+        const html = data.map(lic => `
+          <div class="license-block">
+            <p><strong>Plugin:</strong> ${lic.plugin}</p>
+            <p><strong>Plan:</strong> ${lic.plan}</p>
+            <p><strong>License Key:</strong> ${lic.license_key}</p>
+            ${lic.expires_at ? `<p><strong>Expires:</strong> ${lic.expires_at}</p>` : ''}
+            <a class="download-btn" href="/downloads/${lic.plugin}.zip" target="_blank">Download Plugin</a>
+          </div>
+        `).join('');
+        content.innerHTML = html;
+      })
+      .catch(err => {
+        content.innerHTML = '<div class="error">No licenses found or invalid email/API key.</div>';
+        console.error(err);
+      });
+    });
+  </script>
+</body>
+</html>
