@@ -33,7 +33,7 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 stripe.api_key = STRIPE_SECRET_KEY
 
 PRICE_MAP = {
-    "price_1RMxHlRoUkoV66d2CePA4APz": {"plugin": "quick-add", "plan": "year"},
+    "price_1RN2RfRoUkoV66d2Ouyhudyi": {"plugin": "quick-add", "plan": "year"},
     "price_1RMxIyRoUkoV66d2IoVgVKKN": {"plugin": "quick-add", "plan": "life"},
     "price_1RMxJdRoUkoV66d2Gdid1PeH": {"plugin": "quick-edit", "plan": "year"},
     "price_1RMxK6RoUkoV66d2d6yN3dmW": {"plugin": "quick-edit", "plan": "life"},
