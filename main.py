@@ -34,7 +34,7 @@ stripe.api_key = STRIPE_SECRET_KEY
 
 PRICE_MAP = {
     "price_1RN2RfRoUkoV66d2Ouyhudyi": {"plugin": "quick-add", "plan": "year"},
-    "price_1RMxIyRoUkoV66d2IoVgVKKN": {"plugin": "quick-add", "plan": "life"},
+    "price_1RN3gCRoUkoV66d2oMhAAkWT": {"plugin": "quick-add", "plan": "life"},
     "price_1RMxJdRoUkoV66d2Gdid1PeH": {"plugin": "quick-edit", "plan": "year"},
     "price_1RMxK6RoUkoV66d2d6yN3dmW": {"plugin": "quick-edit", "plan": "life"},
     "price_1RMxKhRoUkoV66d20o1WH0RB": {"plugin": "quick-seo", "plan": "year"},
@@ -170,6 +170,11 @@ async def stripe_webhook(request: Request):
         except Exception as e:
             print("Failed to fetch line items:", str(e))
             raise HTTPException(status_code=500, detail=f"Failed to fetch line items: {str(e)}")
+        
+        print("Parsed email:", email)
+        print("Parsed price_id:", price_id)
+        print("PRICE_MAP keys:", list(PRICE_MAP.keys()))
+
 
         if email and price_id and price_id in PRICE_MAP:
             info = PRICE_MAP[price_id]
