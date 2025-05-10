@@ -34,13 +34,7 @@ stripe.api_key = STRIPE_SECRET_KEY
 
 PRICE_MAP = {
     "price_1RN2RfRoUkoV66d2Ouyhudyi": {"plugin": "quick-add", "plan": "year"},
-    "price_1RN3gCRoUkoV66d2oMhAAkWT": {"plugin": "quick-add", "plan": "life"},
-    "price_1RMxJdRoUkoV66d2Gdid1PeH": {"plugin": "quick-edit", "plan": "year"},
-    "price_1RMxK6RoUkoV66d2d6yN3dmW": {"plugin": "quick-edit", "plan": "life"},
-    "price_1RMxKhRoUkoV66d20o1WH0RB": {"plugin": "quick-seo", "plan": "year"},
-    "price_1RMxLCRoUkoV66d2ClvZ0akg": {"plugin": "quick-seo", "plan": "life"},
-    "price_1RMxLsRoUkoV66d2YJEvgwoF": {"plugin": "quickwoo-bundle", "plan": "year"},
-    "price_1RMxMORoUkoV66d2YSeyssqq": {"plugin": "quickwoo-bundle", "plan": "life"}
+    "price_1RN3gCRoUkoV66d2oMhAAkWT": {"plugin": "quick-add", "plan": "life"}
 }
 
 class LicenseVerifyRequest(BaseModel):
