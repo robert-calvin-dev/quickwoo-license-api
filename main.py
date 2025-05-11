@@ -1,18 +1,10 @@
-from fastapi import FastAPI, Request, HTTPException, Header, Query
-from pydantic import BaseModel, EmailStr
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
-from starlette.middleware.cors import CORSMiddleware
-from datetime import datetime, date, timedelta
-from typing import List
-import os
-import uuid
-import stripe
-import json
+from pydantic import EmailStr
 from dotenv import load_dotenv
-
-from database import get_db
-from models import License
-from utils import generate_license_key
+import os
 
 load_dotenv()
 
@@ -26,199 +18,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+# Mount static directory for HTML file serving
+app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
-stripe.api_key = STRIPE_SECRET_KEY
-
-PRICE_MAP = {
-    "price_1RN2RfRoUkoV66d2Ouyhudyi": {"plugin": "quick-add", "plan": "year"},
-    "price_1RN3gCRoUkoV66d2oMhAAkWT": {"plugin": "quick-add", "plan": "life"}
+# Hardcoded license keys per product
+STATIC_LICENSE_KEYS = {
+    "quick-add": "QW-QUICKADD-STATIC-KEY",
+    "quick-edit": "QW-QUICKEDIT-STATIC-KEY",
+    "quick-seo": "QW-QUICKSEO-STATIC-KEY",
+    "quick-blog": "QW-QUICKBLOG-STATIC-KEY",
+    "quickwoo-bundle": [
+        "QW-QUICKADD-STATIC-KEY",
+        "QW-QUICKEDIT-STATIC-KEY",
+        "QW-QUICKSEO-STATIC-KEY",
+        "QW-QUICKBLOG-STATIC-KEY"
+    ]
 }
 
-class LicenseVerifyRequest(BaseModel):
-    license_key: str
-    email: EmailStr
-    plugin: str
-
-class LicenseGenerateRequest(BaseModel):
-    email: EmailStr
-    plugin: str
-    plan: str
-
-class LicenseRevokeRequest(BaseModel):
-    license_key: str
-    email: EmailStr
-    reason: str
-
-@app.post("/verify-license")
-async def verify_license(data: LicenseVerifyRequest):
-    db = next(get_db())
-    license = db.query(License).filter_by(
-        license_key=data.license_key,
-        email=data.email,
-        plugin=data.plugin
-    ).first()
-
-    if not license:
-        return JSONResponse(status_code=403, content={"valid": False, "reason": "not_found"})
-
-    if license.revoked:
-        return JSONResponse(status_code=403, content={
-            "valid": False,
-            "reason": "revoked",
-            "revoke_reason": license.revoke_reason
-        })
-
-    if license.plan == 'year' and license.expires_at < date.today():
-        return JSONResponse(status_code=403, content={
-            "valid": False,
-            "reason": "expired",
-            "expired_at": str(license.expires_at)
-        })
-
-    license.validated_at = datetime.utcnow()
-    db.commit()
+@app.get("/static-license")
+def get_static_license(email: EmailStr, product: str):
+    key = STATIC_LICENSE_KEYS.get(product)
+    if not key:
+        raise HTTPException(status_code=404, detail="Product not recognized")
 
     return {
-        "valid": True,
-        "plugin": license.plugin,
-        "plan": license.plan,
-        "expires_at": license.expires_at
+        "email": email,
+        "product": product,
+        "license_keys": key if isinstance(key, list) else [key]
     }
-
-@app.post("/generate-license")
-async def generate_license(data: LicenseGenerateRequest, x_api_key: str = Header(...)):
-    if x_api_key != ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    db = next(get_db())
-    issued_at = date.today()
-    expires_at = issued_at + timedelta(days=365) if data.plan == "year" else None
-
-    license_key = generate_license_key(data.plugin, data.plan, issued_at)
-
-    new_license = License(
-        license_key=license_key,
-        email=data.email,
-        plugin=data.plugin,
-        plan=data.plan,
-        issued_at=issued_at,
-        expires_at=expires_at
-    )
-
-    db.add(new_license)
-    db.commit()
-    db.refresh(new_license)
-
-    return {
-        "license_key": new_license.license_key,
-        "email": new_license.email,
-        "plugin": new_license.plugin,
-        "plan": new_license.plan,
-        "expires_at": new_license.expires_at
-    }
-
-@app.post("/revoke-license")
-async def revoke_license(data: LicenseRevokeRequest, x_api_key: str = Header(...)):
-    if x_api_key != ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    db = next(get_db())
-    license = db.query(License).filter_by(
-        license_key=data.license_key,
-        email=data.email
-    ).first()
-
-    if not license:
-        raise HTTPException(status_code=404, detail="License not found")
-
-    license.revoked = True
-    license.revoke_reason = data.reason
-    license.revoked_at = datetime.utcnow()
-    db.commit()
-
-    return {"status": "revoked", "license_key": data.license_key, "reason": data.reason}
-
-@app.post("/stripe-webhook")
-async def stripe_webhook(request: Request):
-    payload = await request.body()
-    print("Received raw payload:", payload.decode())
-    sig_header = request.headers.get("stripe-signature")
-
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-    except Exception as e:
-        print("Webhook signature error:", str(e))
-        raise HTTPException(status_code=400, detail=f"Invalid webhook signature: {str(e)}")
-
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        email = session.get('customer_details', {}).get('email')
-        session_id = session['id']
-
-        try:
-            line_items = stripe.checkout.Session.list_line_items(session_id, limit=1)
-            price_id = line_items['data'][0]['price']['id'] if line_items['data'] else None
-        except Exception as e:
-            print("Failed to fetch line items:", str(e))
-            raise HTTPException(status_code=500, detail=f"Failed to fetch line items: {str(e)}")
-        
-        print("Parsed email:", email)
-        print("Parsed price_id:", price_id)
-        print("PRICE_MAP keys:", list(PRICE_MAP.keys()))
-
-
-        if email and price_id and price_id in PRICE_MAP:
-            info = PRICE_MAP[price_id]
-            issued_at = date.today()
-            expires_at = issued_at + timedelta(days=365) if info['plan'] == "year" else None
-            license_key = generate_license_key(info['plugin'], info['plan'], issued_at)
-
-            db = next(get_db())
-            new_license = License(
-                license_key=license_key,
-                email=email,
-                plugin=info['plugin'],
-                plan=info['plan'],
-                issued_at=issued_at,
-                expires_at=expires_at
-            )
-            db.add(new_license)
-            db.commit()
-
-    return {"status": "success"}
-
-@app.get("/license-lookup")
-def license_lookup(email: EmailStr = Query(...), x_api_key: str = Header(...)):
-    if x_api_key != ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    db = next(get_db())
-    licenses = db.query(License).filter_by(email=email).all()
-
-    if not licenses:
-        raise HTTPException(status_code=404, detail="No licenses found")
-
-    return [
-        {
-            "license_key": l.license_key,
-            "plugin": l.plugin,
-            "plan": l.plan,
-            "issued_at": str(l.issued_at),
-            "expires_at": str(l.expires_at) if l.expires_at else None,
-            "revoked": l.revoked
-        }
-        for l in licenses
-    ]
 
 @app.get("/")
 def root():
-    return {"status": "OK", "message": "QuickWoo License API live."}
-
-from fastapi.staticfiles import StaticFiles
-import os
-
-app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
-
+    return {"status": "OK", "message": "QuickWoo Static License API ready."}
